@@ -1,0 +1,17 @@
+name = "vcfclick-demo"
+compatibility_date = "2026-06-08"
+pages_build_output_dir = ".svelte-kit/cloudflare"
+
+# Cloudflare Pages picks the build command and output dir from
+# package.json scripts + the @sveltejs/adapter-cloudflare output.
+# This file mainly exists to declare the project name and to set
+# environment variables in `wrangler pages deploy`.
+
+# Secrets — set with `wrangler pages secret put ANTHROPIC_API_KEY`,
+# NOT in this file. The Pages dashboard also accepts them under
+# "Settings → Environment variables".
+#
+# Variables (non-secret) — uncomment and tweak:
+# [vars]
+# ANTHROPIC_MODEL = "claude-haiku-4-5-20251001"
+# VITE_DEMO_DATA_BASE = "https://demo-data.vcfclick.io/1kg-chr21"

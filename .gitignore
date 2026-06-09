@@ -1,0 +1,16 @@
+node_modules/
+.svelte-kit/
+build/
+dist/
+.env
+.env.local
+.env.production
+.DS_Store
+*.log
+
+# Sample data lives in static/demo-data/ committed for the MVP.
+# Once real 1000G chr21 data is on R2, replace VITE_DEMO_DATA_BASE
+# with the R2 URL and gitignore static/demo-data/ at that point.
+
+# Cloudflare Wrangler local state
+.wrangler/

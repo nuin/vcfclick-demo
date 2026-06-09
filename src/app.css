@@ -1,0 +1,26 @@
+@import 'tailwindcss';
+
+@theme {
+	--color-primary: #b45309;
+	--color-accent: #fef3c7;
+}
+
+@layer base {
+	html {
+		font-family:
+			-apple-system,
+			BlinkMacSystemFont,
+			'SF Pro Text',
+			system-ui,
+			sans-serif;
+	}
+	pre,
+	code {
+		font-family:
+			'SF Mono',
+			ui-monospace,
+			'Menlo',
+			'Monaco',
+			monospace;
+	}
+}
