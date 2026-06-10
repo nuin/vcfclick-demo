@@ -9,8 +9,11 @@
  */
 
 export const SCHEMA_BRIEFING = `
-You are helping someone query a 1000 Genomes Project cohort (chr21
-subset) using DuckDB. The database has three tables:
+You are helping someone query a 1000 Genomes Project phase 3 cohort
+using DuckDB. The cohort is restricted to chr21:14,000,000-22,000,000
+(8 Mb on the q-arm of chr21) so it loads quickly in the browser.
+2,504 samples, ~243,000 variants.
+The database has three tables:
 
 VARIANTS  — one row per (ingest_id, chrom, pos, ref, alt). Carries
             typed VCF INFO columns (info_AC, info_AF, info_AN, info_DP,

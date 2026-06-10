@@ -12,9 +12,9 @@
 
 	const SAMPLE_QUESTIONS = [
 		'Which variants have the highest allele frequency in this cohort?',
-		'How many variants are on chromosome 21?',
+		'How many variants are in this cohort?',
 		'How many samples are in the cohort?',
-		"What's the average DP across all variant calls?"
+		'Show the top 10 variants by allele frequency between chr21:18M and 20M.'
 	];
 
 	let dbReady = $state(false);
@@ -105,8 +105,9 @@
 			<h1 class="mb-2 text-3xl font-bold text-gray-900">vcfclick demo</h1>
 			<p class="max-w-2xl text-gray-600">
 				Ask a population-genetics question in English. A language model writes the SQL;
-				DuckDB-Wasm runs it in your browser against a 1000 Genomes cohort. You see the
-				SQL it wrote, so you can audit the math.
+				DuckDB-Wasm runs it in your browser against the 1000 Genomes phase 3 cohort
+				(2,504 samples, chr21:14M-22M). You see the SQL it wrote, so you can audit
+				the math.
 			</p>
 			<p class="mt-3 text-sm text-gray-500">
 				Source:
