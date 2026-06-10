@@ -1,10 +1,14 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { base } from '$app/paths';
 	import { query, registerCohort } from '$lib/duckdb';
+	import { complete, getKey, setKey, getModel, setModel } from '$lib/llm';
 
-	// Configured at build time. For local dev the demo-data/ files
-	// are served from /static; for production swap to the R2 base URL.
-	const DATA_BASE: string = (import.meta.env.VITE_DEMO_DATA_BASE as string) ?? '/demo-data';
+	// Cohort Parquet base. Defaults to the bundled MVP fixture under
+	// /demo-data; override at build time with
+	//   VITE_DEMO_DATA_BASE=https://demo-data.vcfclick.io/1kg-chr21
+	const DATA_BASE: string =
+		(import.meta.env.VITE_DEMO_DATA_BASE as string) ?? `${base}/demo-data`;
 
 	const SAMPLE_QUESTIONS = [
 		'Which variants have the highest allele frequency in this cohort?',
@@ -19,13 +23,23 @@
 	let asking = $state(false);
 	let sql = $state<string | null>(null);
 	let explanation = $state<string | null>(null);
+	let modelLabel = $state<string | null>(null);
 	let resultColumns = $state<string[]>([]);
 	let resultRows = $state<unknown[][]>([]);
 	let queryMs = $state(0);
-	let modelLabel = $state<string | null>(null);
 	let errorMsg = $state<string | null>(null);
 
+	// Settings drawer state — key + model live in localStorage; we
+	// hydrate from there on mount.
+	let settingsOpen = $state(false);
+	let keyDraft = $state('');
+	let modelDraft = $state('');
+	let hasKey = $state(false);
+
 	onMount(async () => {
+		keyDraft = getKey();
+		modelDraft = getModel();
+		hasKey = !!keyDraft;
 		try {
 			await registerCohort(DATA_BASE);
 			dbReady = true;
@@ -34,8 +48,25 @@
 		}
 	});
 
+	function saveSettings() {
+		setKey(keyDraft.trim());
+		setModel(modelDraft.trim());
+		hasKey = !!keyDraft.trim();
+		settingsOpen = false;
+	}
+
+	function clearKey() {
+		setKey('');
+		keyDraft = '';
+		hasKey = false;
+	}
+
 	async function ask() {
 		if (!question.trim()) return;
+		if (!hasKey) {
+			settingsOpen = true;
+			return;
+		}
 		asking = true;
 		errorMsg = null;
 		sql = null;
@@ -43,25 +74,12 @@
 		resultColumns = [];
 		resultRows = [];
 		try {
-			const completion = await fetch('/api/complete', {
-				method: 'POST',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ question })
-			});
-			if (!completion.ok) {
-				const e = (await completion.json()) as { error?: string };
-				throw new Error(e.error ?? `HTTP ${completion.status}`);
-			}
-			const data = (await completion.json()) as {
-				sql: string;
-				explanation: string;
-				model: string;
-			};
-			sql = data.sql;
-			explanation = data.explanation;
-			modelLabel = data.model;
+			const completion = await complete(question);
+			sql = completion.sql;
+			explanation = completion.explanation;
+			modelLabel = completion.model;
 
-			const r = await query(data.sql);
+			const r = await query(completion.sql);
 			resultColumns = r.columns;
 			resultRows = r.rows;
 			queryMs = r.ms;
@@ -82,30 +100,92 @@
 </svelte:head>
 
 <main class="mx-auto max-w-4xl px-4 py-12">
-	<header class="mb-10">
-		<h1 class="mb-2 text-3xl font-bold text-gray-900">vcfclick demo</h1>
-		<p class="max-w-2xl text-gray-600">
-			Ask a population-genetics question in English. A language model writes the SQL;
-			DuckDB-Wasm runs it in your browser against a 1000 Genomes chr21 cohort. You see
-			the SQL it wrote, so you can audit the math.
-		</p>
-		<p class="mt-3 text-sm text-gray-500">
-			Source:
-			<a
-				href="https://github.com/nuin/vcfclick"
-				class="text-[var(--color-primary)] hover:underline"
-				target="_blank"
-				rel="noopener noreferrer">github.com/nuin/vcfclick</a
-			>
-			·
-			<a
-				href="https://pypi.org/project/vcfclick/"
-				class="text-[var(--color-primary)] hover:underline"
-				target="_blank"
-				rel="noopener noreferrer">PyPI</a
-			>
-		</p>
+	<header class="mb-10 flex items-start justify-between gap-4">
+		<div>
+			<h1 class="mb-2 text-3xl font-bold text-gray-900">vcfclick demo</h1>
+			<p class="max-w-2xl text-gray-600">
+				Ask a population-genetics question in English. A language model writes the SQL;
+				DuckDB-Wasm runs it in your browser against a 1000 Genomes cohort. You see the
+				SQL it wrote, so you can audit the math.
+			</p>
+			<p class="mt-3 text-sm text-gray-500">
+				Source:
+				<a
+					href="https://github.com/nuin/vcfclick"
+					class="text-[var(--color-primary)] hover:underline"
+					target="_blank"
+					rel="noopener noreferrer">github.com/nuin/vcfclick</a
+				>
+				·
+				<a
+					href="https://pypi.org/project/vcfclick/"
+					class="text-[var(--color-primary)] hover:underline"
+					target="_blank"
+					rel="noopener noreferrer">PyPI</a
+				>
+			</p>
+		</div>
+		<button
+			type="button"
+			onclick={() => (settingsOpen = !settingsOpen)}
+			class="rounded border border-stone-300 bg-white px-3 py-1.5 text-xs text-gray-600 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+			title="API key settings"
+		>
+			{hasKey ? '⚙ settings' : '⚙ set API key'}
+		</button>
 	</header>
+
+	{#if settingsOpen}
+		<section
+			class="mb-6 rounded border border-stone-300 bg-white p-5 text-sm shadow-sm"
+		>
+			<h2 class="mb-2 font-medium text-gray-800">Anthropic API key</h2>
+			<p class="mb-3 text-gray-600">
+				The page calls Anthropic directly from your browser; your key stays in your
+				browser's localStorage and is never sent anywhere except
+				<code class="text-[var(--color-primary)]">api.anthropic.com</code>.
+			</p>
+			<label class="mb-1 block text-xs font-medium text-gray-700" for="key">API key</label>
+			<input
+				id="key"
+				type="password"
+				bind:value={keyDraft}
+				placeholder="sk-ant-…"
+				class="mb-3 w-full rounded border border-stone-300 p-2 font-mono text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+			/>
+			<label class="mb-1 block text-xs font-medium text-gray-700" for="model"
+				>Model (optional)</label
+			>
+			<input
+				id="model"
+				type="text"
+				bind:value={modelDraft}
+				placeholder="claude-haiku-4-5-20251001"
+				class="mb-4 w-full rounded border border-stone-300 p-2 font-mono text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
+			/>
+			<div class="flex items-center gap-3">
+				<button
+					type="button"
+					onclick={saveSettings}
+					class="rounded bg-gray-900 px-4 py-1.5 text-sm font-medium text-white hover:bg-gray-800"
+					>save</button
+				>
+				{#if hasKey}
+					<button
+						type="button"
+						onclick={clearKey}
+						class="text-xs text-gray-500 hover:text-red-700">clear key</button
+					>
+				{/if}
+				<a
+					href="https://console.anthropic.com/settings/keys"
+					target="_blank"
+					rel="noopener noreferrer"
+					class="ml-auto text-xs text-[var(--color-primary)] hover:underline">get a key →</a
+				>
+			</div>
+		</section>
+	{/if}
 
 	{#if dbError}
 		<div class="mb-6 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-900">
@@ -215,10 +295,11 @@
 
 	<footer class="mt-16 border-t border-stone-200 pt-6 text-sm text-gray-500">
 		<p>
-			Runs DuckDB-Wasm in your browser; only the natural-language question is sent
-			to a server (a Cloudflare Pages Function that proxies the Anthropic API).
-			Parquet files are fetched by HTTP range read, so you only download the columns
-			and row groups each query touches.
+			Runs DuckDB-Wasm in your browser. You bring your own Anthropic API key — it
+			stays in your browser's localStorage and is only ever sent to
+			<code class="text-gray-700">api.anthropic.com</code>. Parquet files are fetched
+			by HTTP range read, so you only download the columns and row groups each query
+			touches.
 		</p>
 	</footer>
 </main>

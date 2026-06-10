@@ -1,30 +1,36 @@
 # vcfclick-demo
 
-Static page + Cloudflare Pages Function. Visitors type a
-population-genetics question in English; a language model (Anthropic
-API via the Function) writes SQL; DuckDB-Wasm runs it in the browser
-against a cohort served as Parquet over HTTP range reads. Visitors
-see the SQL the model wrote.
+Pure-static page hosted on GitHub Pages. DuckDB-Wasm runs the cohort
+SQL in the visitor's browser; visitors bring their own Anthropic API
+key (kept in their browser's localStorage, never sent anywhere except
+`api.anthropic.com`). No server, no secrets to manage, no rate-limit
+exposure on my account.
 
 ## What's here
 
 ```
 src/
   app.html, app.css                  global page shell + Tailwind v4
-  routes/+page.svelte                the demo UI
-  routes/api/complete/+server.ts     Anthropic proxy (Pages Function)
+  routes/+layout.svelte              shell
+  routes/+page.svelte                the demo UI (ask, SQL panel,
+                                     results, settings drawer)
   lib/duckdb.ts                      DuckDB-Wasm init + query helper
-  lib/schema-briefing.ts             schema briefing handed to the model
-static/demo-data/                    MVP cohort (tiny fixture, 5 vars)
-wrangler.toml                        Cloudflare Pages config
+  lib/llm.ts                         browser-direct Anthropic call
+                                     with anthropic-dangerous-
+                                     direct-browser-access: true
+  lib/schema-briefing.ts             schema briefing handed to the
+                                     model — sparse-aware AF pattern
+static/demo-data/                    MVP cohort: tiny test fixture
+                                     (5 variants × 3 samples)
+.github/workflows/deploy.yml         build + publish on push to main
 ```
 
 ## MVP cohort
 
-The committed `static/demo-data/` holds 5 variants × 3 samples from
-the vcfclick test fixture (`tests/fixtures/tiny.vcf.gz`). It proves
-the wiring; it's not a useful demo dataset. Real 1000G chr21 is
-the next step (~200 MB, hosted on R2, see below).
+`static/demo-data/` is the vcfclick test fixture dumped to Parquet.
+5 variants × 3 samples — proves the wiring; not a useful demo
+dataset. The "next steps" section below covers swapping in real
+1000G chr21.
 
 ## Local dev
 
@@ -33,37 +39,30 @@ bun install
 bun run dev
 ```
 
-The dev page tries to call `/api/complete`. To actually get answers
-locally you need a real Anthropic key — set it in `.env.local`:
+Open the page, click "⚙ set API key", paste your Anthropic key
+(`sk-ant-…`), then ask a question. The key stays in your browser.
 
-```
-ANTHROPIC_API_KEY=sk-ant-...
-ANTHROPIC_MODEL=claude-haiku-4-5-20251001
-```
+## Deploy to GitHub Pages
 
-Wrangler's dev runtime reads these for the Pages Function.
+The workflow at `.github/workflows/deploy.yml` runs on every push to
+`main`, builds with `BASE_PATH=/vcfclick-demo`, and publishes to
+GitHub Pages. One-time setup:
 
-## Deploy to Cloudflare Pages
+1. **Push to GitHub:** create the repo as `nuin/vcfclick-demo`.
+2. **Enable Pages:** repo Settings → Pages → "Build and deployment"
+   source = "GitHub Actions".
+3. **Push to `main`:** workflow builds + publishes; URL appears in
+   the Actions run output (typically
+   `https://nuin.github.io/vcfclick-demo/`).
 
-1. Create the Pages project (one-time):
-   ```bash
-   bun run build
-   bunx wrangler pages deploy .svelte-kit/cloudflare \
-       --project-name=vcfclick-demo
-   ```
-2. Set secrets via Wrangler or the Pages dashboard:
-   ```bash
-   bunx wrangler pages secret put ANTHROPIC_API_KEY --project-name=vcfclick-demo
-   ```
-3. Set non-secret env vars (Pages dashboard → Settings → Environment
-   variables, or `wrangler.toml [vars]` block):
-   * `ANTHROPIC_MODEL` (defaults to `claude-haiku-4-5-20251001`)
-   * `VITE_DEMO_DATA_BASE` (defaults to `/demo-data`; set to the R2
-     URL once chr21 is uploaded — see below)
+If you wire a custom domain (e.g. `demo.vcfclick.io`), set
+`BASE_PATH: ''` in `.github/workflows/deploy.yml` and add a
+`static/CNAME` file containing the domain.
 
-## Loading a real cohort (1000G chr21)
+## Loading a real cohort
 
-Replace the toy 5-variant fixture with a real 1000G slice:
+The MVP fixture is too small to demonstrate anything. To run against
+real 1000 Genomes chr21:
 
 ```bash
 # In the main vcfclick repo
@@ -77,38 +76,34 @@ VCFCLICK_BACKEND=duckdb vcfclick db ingest chr21 /tmp/chr21.vcf.gz \
 VCFCLICK_BACKEND=duckdb vcfclick db dump chr21 --out /tmp/chr21-dump
 ```
 
-Upload to Cloudflare R2:
+The full chr21 genotypes parquet is ~150 MB, which is **over
+GitHub's 100 MB per-file limit**. Two options:
+
+- **Host the parquet on GitHub Releases** (2 GB per file allowed),
+  reference its public URL via the `VITE_DEMO_DATA_BASE` build-time
+  env var.
+- **Host on Cloudflare R2 / public S3 / any CDN** with CORS enabled
+  for the GH Pages origin, then point `VITE_DEMO_DATA_BASE` at it.
+
+Once the URL exists:
 
 ```bash
-bunx wrangler r2 bucket create vcfclick-demo-data
-bunx wrangler r2 object put vcfclick-demo-data/1kg-chr21/variants.parquet \
-    --file=/tmp/chr21-dump/variants.parquet
-bunx wrangler r2 object put vcfclick-demo-data/1kg-chr21/genotypes.parquet \
-    --file=/tmp/chr21-dump/genotypes.parquet
-bunx wrangler r2 object put vcfclick-demo-data/1kg-chr21/samples.parquet \
-    --file=/tmp/chr21-dump/samples.parquet
+# Override at build time in .github/workflows/deploy.yml
+env:
+  BASE_PATH: /vcfclick-demo
+  VITE_DEMO_DATA_BASE: https://github.com/nuin/vcfclick-demo/releases/download/data-v1
 ```
 
-Make the bucket publicly readable, then set
-`VITE_DEMO_DATA_BASE=https://<your-bucket-public-url>/1kg-chr21` and
-redeploy.
+## Trust + privacy notes for visitors
 
-## Cost model
+The page makes exactly two kinds of network calls:
 
-Idle: $0 (Pages + Workers free tier).
+1. **Cohort Parquet files** fetched from `VITE_DEMO_DATA_BASE` (HTTP
+   range reads, no credentials).
+2. **Anthropic Messages API** at `https://api.anthropic.com/v1/messages`,
+   using the visitor's own key supplied via the settings drawer. The
+   key is stored in localStorage on their device and never sent
+   elsewhere.
 
-Per question: ~$0.005 with Haiku-tier model (2k input + 500 output
-tokens). R2 reads have no egress fees. Compute is well under the
-free tier.
-
-Per-IP rate limiting via Cloudflare's Rate Limiting API is NOT yet
-wired up — for production add a binding before opening the demo to
-public traffic.
-
-## What's still needed before public launch
-
-1. Real cohort on R2 (above).
-2. Anthropic API key as a Pages secret.
-3. Rate limiting binding configured.
-4. DNS: point `demo.vcfclick.io` at the Pages project.
-5. Production smoke test of the `/api/complete` path.
+There is no analytics, no telemetry, no server-side logging — there
+is no server. The page is 100% static files on GitHub Pages.
