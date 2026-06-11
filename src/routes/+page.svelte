@@ -7,8 +7,18 @@
 	// Cohort Parquet base. Defaults to the bundled MVP fixture under
 	// /demo-data; override at build time with
 	//   VITE_DEMO_DATA_BASE=https://demo-data.vcfclick.io/1kg-chr21
-	const DATA_BASE: string =
-		(import.meta.env.VITE_DEMO_DATA_BASE as string) ?? `${base}/demo-data`;
+	//
+	// Built at onMount time (browser-only) so we can prepend the
+	// page origin. DuckDB-Wasm's read_parquet() needs an absolute
+	// https:// URL — a path-only string like `/vcfclick-demo/demo-data/...`
+	// is passed straight to httpfs, which fails to resolve it.
+	function resolveDataBase(): string {
+		const configured = import.meta.env.VITE_DEMO_DATA_BASE as string | undefined;
+		if (configured) return configured;
+		// `base` is the SvelteKit configured base path (e.g. /vcfclick-demo).
+		// window.origin is e.g. https://nuin.github.io.
+		return `${window.location.origin}${base}/demo-data`;
+	}
 
 	const SAMPLE_QUESTIONS = [
 		'Which variants have the highest allele frequency in this cohort?',
@@ -41,7 +51,7 @@
 		modelDraft = getModel();
 		hasKey = !!keyDraft;
 		try {
-			await registerCohort(DATA_BASE);
+			await registerCohort(resolveDataBase());
 			dbReady = true;
 		} catch (e) {
 			dbError = (e as Error).message;
