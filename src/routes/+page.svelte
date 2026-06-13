@@ -2,7 +2,18 @@
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { query, registerCohort } from '$lib/duckdb';
-	import { complete, getKey, setKey, getModel, setModel } from '$lib/llm';
+	import {
+		complete,
+		getProvider,
+		setProvider,
+		getKey,
+		setKey,
+		getModel,
+		setModel,
+		getKeyDocsUrl,
+		getProviderLabel,
+		type Provider
+	} from '$lib/llm';
 
 	// Cohort Parquet base. Defaults to the bundled MVP fixture under
 	// /demo-data; override at build time with
@@ -39,17 +50,18 @@
 	let queryMs = $state(0);
 	let errorMsg = $state<string | null>(null);
 
-	// Settings drawer state — key + model live in localStorage; we
-	// hydrate from there on mount.
+	// Settings drawer state. Each provider keeps its own key + model in
+	// localStorage, so switching providers swaps the visible drafts
+	// rather than clobbering the other provider's stored key.
 	let settingsOpen = $state(false);
+	let provider = $state<Provider>('google');
 	let keyDraft = $state('');
 	let modelDraft = $state('');
 	let hasKey = $state(false);
 
 	onMount(async () => {
-		keyDraft = getKey();
-		modelDraft = getModel();
-		hasKey = !!keyDraft;
+		provider = getProvider();
+		loadProviderDrafts(provider);
 		try {
 			await registerCohort(resolveDataBase());
 			dbReady = true;
@@ -58,15 +70,29 @@
 		}
 	});
 
+	function loadProviderDrafts(p: Provider) {
+		keyDraft = getKey(p);
+		modelDraft = getModel(p);
+		hasKey = !!keyDraft;
+	}
+
+	// User flips the provider radio in the drawer — persist the choice
+	// and reload that provider's saved key/model into the fields.
+	function selectProvider(p: Provider) {
+		provider = p;
+		setProvider(p);
+		loadProviderDrafts(p);
+	}
+
 	function saveSettings() {
-		setKey(keyDraft.trim());
-		setModel(modelDraft.trim());
+		setKey(provider, keyDraft.trim());
+		setModel(provider, modelDraft.trim());
 		hasKey = !!keyDraft.trim();
 		settingsOpen = false;
 	}
 
 	function clearKey() {
-		setKey('');
+		setKey(provider, '');
 		keyDraft = '';
 		hasKey = false;
 	}
@@ -147,21 +173,54 @@
 	</header>
 
 	{#if settingsOpen}
-		<section
-			class="mb-6 rounded border border-stone-300 bg-white p-5 text-sm shadow-sm"
-		>
-			<h2 class="mb-2 font-medium text-gray-800">Anthropic API key</h2>
+		<section class="mb-6 rounded border border-stone-300 bg-white p-5 text-sm shadow-sm">
+			<h2 class="mb-3 font-medium text-gray-800">API key</h2>
+
+			<!-- Provider picker. Google Gemini is the free-tier default so
+			     visitors without a paid Anthropic balance can still try the
+			     demo: an AI Studio key needs only a Google account. -->
+			<fieldset class="mb-4">
+				<legend class="mb-2 text-xs font-medium text-gray-700">Provider</legend>
+				<div class="flex flex-col gap-2 sm:flex-row sm:gap-4">
+					<label class="flex items-center gap-2">
+						<input
+							type="radio"
+							name="provider"
+							value="google"
+							checked={provider === 'google'}
+							onchange={() => selectProvider('google')}
+						/>
+						<span>Google Gemini <span class="text-green-700">(free)</span></span>
+					</label>
+					<label class="flex items-center gap-2">
+						<input
+							type="radio"
+							name="provider"
+							value="anthropic"
+							checked={provider === 'anthropic'}
+							onchange={() => selectProvider('anthropic')}
+						/>
+						<span>Anthropic Claude <span class="text-gray-400">(paid)</span></span>
+					</label>
+				</div>
+			</fieldset>
+
 			<p class="mb-3 text-gray-600">
-				The page calls Anthropic directly from your browser; your key stays in your
-				browser's localStorage and is never sent anywhere except
-				<code class="text-[var(--color-primary)]">api.anthropic.com</code>.
+				The page calls
+				<strong>{getProviderLabel(provider)}</strong>
+				directly from your browser; your key stays in your browser's localStorage and
+				is never sent anywhere except the provider's own API endpoint.
+				{#if provider === 'google'}
+					Gemini's free tier needs only a Google account — no payment method.
+				{/if}
 			</p>
+
 			<label class="mb-1 block text-xs font-medium text-gray-700" for="key">API key</label>
 			<input
 				id="key"
 				type="password"
 				bind:value={keyDraft}
-				placeholder="sk-ant-…"
+				placeholder={provider === 'google' ? 'AIza…' : 'sk-ant-…'}
 				class="mb-3 w-full rounded border border-stone-300 p-2 font-mono text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
 			/>
 			<label class="mb-1 block text-xs font-medium text-gray-700" for="model"
@@ -171,7 +230,7 @@
 				id="model"
 				type="text"
 				bind:value={modelDraft}
-				placeholder="claude-haiku-4-5-20251001"
+				placeholder={provider === 'google' ? 'gemini-2.0-flash' : 'claude-haiku-4-5-20251001'}
 				class="mb-4 w-full rounded border border-stone-300 p-2 font-mono text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
 			/>
 			<div class="flex items-center gap-3">
@@ -189,7 +248,7 @@
 					>
 				{/if}
 				<a
-					href="https://console.anthropic.com/settings/keys"
+					href={getKeyDocsUrl(provider)}
 					target="_blank"
 					rel="noopener noreferrer"
 					class="ml-auto text-xs text-[var(--color-primary)] hover:underline">get a key →</a
@@ -306,11 +365,11 @@
 
 	<footer class="mt-16 border-t border-stone-200 pt-6 text-sm text-gray-500">
 		<p>
-			Runs DuckDB-Wasm in your browser. You bring your own Anthropic API key — it
-			stays in your browser's localStorage and is only ever sent to
-			<code class="text-gray-700">api.anthropic.com</code>. Parquet files are fetched
-			by HTTP range read, so you only download the columns and row groups each query
-			touches.
+			Runs DuckDB-Wasm in your browser. You bring your own API key for either Google
+			Gemini (free tier) or Anthropic Claude — it stays in your browser's localStorage
+			and is only ever sent to that provider's own API endpoint. Parquet files are
+			fetched by HTTP range read, so you only download the columns and row groups each
+			query touches.
 		</p>
 	</footer>
 </main>
