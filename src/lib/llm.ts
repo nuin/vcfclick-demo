@@ -39,7 +39,13 @@ const STORAGE_MODEL = {
 
 const DEFAULT_MODEL = {
 	anthropic: 'claude-haiku-4-5-20251001',
-	google: 'gemini-2.0-flash'
+	// `gemini-flash-latest` is Google's floating alias that always
+	// tracks the current free-tier Flash model. Using the alias rather
+	// than a pinned version (gemini-2.0-flash, etc.) keeps the demo
+	// from breaking each time Google retires an older snapshot. If the
+	// alias is ever unavailable, the user can override the model in the
+	// settings drawer.
+	google: 'gemini-flash-latest'
 } as const;
 
 const KEY_DOCS = {
@@ -227,6 +233,16 @@ async function completeGoogle(
 			throw new Error(
 				'Google free-tier rate limit hit. Wait a minute or switch to ' +
 					'Anthropic in settings.'
+			);
+		}
+		// 404 NOT_FOUND means the model id is wrong or retired. Point the
+		// user at the override field rather than surfacing the raw error.
+		if (upstream.status === 404) {
+			throw new Error(
+				`Gemini model "${model}" is not available to your key. ` +
+					'Set a current model in settings (try gemini-2.5-flash or ' +
+					'gemini-flash-latest), or list yours at ' +
+					'aistudio.google.com.'
 			);
 		}
 		throw new Error(`Gemini ${upstream.status}: ${text.slice(0, 300)}`);

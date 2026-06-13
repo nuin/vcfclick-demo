@@ -230,7 +230,7 @@
 				id="model"
 				type="text"
 				bind:value={modelDraft}
-				placeholder={provider === 'google' ? 'gemini-2.0-flash' : 'claude-haiku-4-5-20251001'}
+				placeholder={provider === 'google' ? 'gemini-flash-latest' : 'claude-haiku-4-5-20251001'}
 				class="mb-4 w-full rounded border border-stone-300 p-2 font-mono text-sm focus:border-[var(--color-primary)] focus:outline-none focus:ring-1 focus:ring-[var(--color-primary)]"
 			/>
 			<div class="flex items-center gap-3">
