@@ -130,7 +130,11 @@ function parseJsonCompletion(text: string): ParsedCompletion {
 	try {
 		return JSON.parse(cleaned);
 	} catch {
-		throw new Error('model did not return valid JSON');
+		// Surface a snippet of what we actually got — a truncated or
+		// empty body (common when a thinking model burns its token
+		// budget before emitting the JSON) is otherwise invisible.
+		const snippet = cleaned.slice(0, 200) || '(empty response body)';
+		throw new Error(`model did not return valid JSON. Got: ${snippet}`);
 	}
 }
 
@@ -210,7 +214,15 @@ async function completeGoogle(
 			systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
 			contents: [{ role: 'user', parts: [{ text: question }] }],
 			generationConfig: {
-				maxOutputTokens: 700,
+				// Gemini 2.5-tier Flash models think by default, and thinking
+				// tokens come out of maxOutputTokens. For SQL generation the
+				// reasoning is overhead that can starve the JSON body, so
+				// turn it off. thinkingBudget:0 is ignored by non-thinking
+				// models, so this is safe across the gemini-flash-latest alias.
+				thinkingConfig: { thinkingBudget: 0 },
+				// Headroom above the actual ~300-token JSON so a slightly
+				// chatty explanation never truncates mid-object.
+				maxOutputTokens: 2048,
 				responseMimeType: 'application/json',
 				responseSchema: {
 					type: 'object',
@@ -249,7 +261,19 @@ async function completeGoogle(
 	}
 
 	const data = (await upstream.json()) as GeminiResponse;
-	const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
+	const candidate = data.candidates?.[0];
+	const text = candidate?.content?.parts?.[0]?.text ?? '';
+
+	// A MAX_TOKENS finish with no/short text means the response was
+	// truncated. Call it out explicitly — this is the failure mode
+	// thinkingConfig + the higher maxOutputTokens above are meant to
+	// prevent, so seeing it again is a real signal, not noise.
+	if (candidate?.finishReason === 'MAX_TOKENS') {
+		throw new Error(
+			'Gemini response was truncated (MAX_TOKENS) before returning ' +
+				'complete JSON. Try a shorter question, or switch to Anthropic.'
+		);
+	}
 	if (!text) throw new Error('empty response from Gemini');
 
 	const parsed = parseJsonCompletion(text);
