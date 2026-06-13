@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
-	import { query, registerCohort } from '$lib/duckdb';
+	import { query, registerCohort, type LoadProgress } from '$lib/duckdb';
 	import {
 		complete,
 		getProvider,
@@ -40,6 +40,8 @@
 
 	let dbReady = $state(false);
 	let dbError = $state<string | null>(null);
+	let loadLabel = $state('Starting…');
+	let loadFraction = $state<number | null>(null);
 	let question = $state('');
 	let asking = $state(false);
 	let sql = $state<string | null>(null);
@@ -63,7 +65,10 @@
 		provider = getProvider();
 		loadProviderDrafts(provider);
 		try {
-			await registerCohort(resolveDataBase());
+			await registerCohort(resolveDataBase(), (p: LoadProgress) => {
+				loadLabel = p.label;
+				loadFraction = p.fraction;
+			});
 			dbReady = true;
 		} catch (e) {
 			dbError = (e as Error).message;
@@ -263,7 +268,27 @@
 		</div>
 	{:else if !dbReady}
 		<div class="mb-6 rounded border border-stone-200 bg-white p-4 text-sm text-gray-600">
-			Loading DuckDB-Wasm and connecting to the cohort…
+			<div class="mb-2 flex items-center justify-between">
+				<span>{loadLabel}</span>
+				{#if loadFraction !== null}
+					<span class="font-mono text-xs text-gray-400"
+						>{Math.round(loadFraction * 100)}%</span
+					>
+				{/if}
+			</div>
+			<div class="h-1.5 w-full overflow-hidden rounded bg-stone-100">
+				{#if loadFraction !== null}
+					<!-- Determinate: width tracks the real byte / table fraction. -->
+					<div
+						class="h-full rounded bg-[var(--color-primary)] transition-[width] duration-200"
+						style="width: {Math.round(loadFraction * 100)}%"
+					></div>
+				{:else}
+					<!-- Indeterminate: a sliding sliver while the total is unknown
+					     (e.g. engine served from browser cache with no byte total). -->
+					<div class="h-full w-1/3 animate-pulse rounded bg-[var(--color-primary)]"></div>
+				{/if}
+			</div>
 		</div>
 	{/if}
 
