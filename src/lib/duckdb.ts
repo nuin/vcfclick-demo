@@ -124,6 +124,33 @@ export interface QueryResult {
 }
 
 /**
+ * Guard the browser demo from SQL shapes that DuckDB-Wasm has to fully
+ * aggregate or sort before the streaming row cap can help. Broad
+ * genotype-table aggregations are correct for the CLI/chDB story, but
+ * too heavy for the public in-browser demo.
+ */
+export function validateDemoSql(sql: string): void {
+	const normalized = sql.toLowerCase().replace(/\s+/g, ' ');
+	if (!/\bfrom\s+genotypes\b|\bjoin\s+genotypes\b/.test(normalized)) return;
+
+	const hasAggregation = /\bgroup\s+by\b|\border\s+by\b|\bsum\s*\(|\bcount\s*\(/.test(
+		normalized
+	);
+	if (!hasAggregation) return;
+
+	const hasRegionFilter =
+		/\bchrom\s*=\s*['"]?chr/.test(normalized) &&
+		/\bpos\s+between\b|\bpos\s*[<>=]/.test(normalized);
+	if (hasRegionFilter) return;
+
+	throw new Error(
+		'This genotype-table query would use too much browser memory in the public demo. ' +
+			'Ask for a smaller region such as chr21:18M-20M, or rank variants by the ' +
+			'precomputed variants.info_AF column instead.'
+	);
+}
+
+/**
  * Run a single read-only SQL statement and return up to
  * MAX_RESULT_ROWS rows. Streaming (`conn.send`) rather than eager
  * (`conn.query`) so an unbounded scan stops pulling once the cap is
@@ -143,6 +170,7 @@ export async function query(sql: string): Promise<QueryResult> {
 	if (trimmed.includes(';')) {
 		throw new Error('Only a single SQL statement is allowed.');
 	}
+	validateDemoSql(trimmed);
 
 	const db = await getDuckDB();
 	const conn = await db.connect();

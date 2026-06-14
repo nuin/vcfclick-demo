@@ -32,13 +32,29 @@ SAMPLES   — one row per (ingest_id, sample_id). Carries cohort
 
 CRITICAL CORRECTNESS RULE FOR ALLELE FREQUENCY:
 
-Because genotypes is SPARSE, computing allele frequency by
-INNER JOIN samples → genotypes silently inflates AF — the
-denominator collapses to only the non-reference samples,
-not the full cohort.
+For broad allele-frequency ranking, use the precomputed typed fields
+on variants. Use variants.info_AF, variants.info_AC, and
+variants.info_AN instead of aggregating genotypes:
 
-The correct pattern is to compute the cohort size from samples
-ALONE, then bring it in via CROSS JOIN:
+    SELECT chrom, pos, ref, alt, info_AF, info_AC, info_AN
+    FROM variants
+    WHERE info_AF IS NOT NULL
+    ORDER BY info_AF DESC
+    LIMIT 20;
+
+Do not aggregate the full genotypes table for broad AF ranking in this
+browser demo. DuckDB-Wasm must build the GROUP BY / ORDER BY result
+before LIMIT can return rows, which can exhaust browser memory.
+
+When the user asks for genotype-derived counts at a specific variant
+or a narrow region, genotypes is SPARSE: ONLY non-reference genotypes
+are stored. Computing allele frequency by INNER JOIN samples →
+genotypes silently inflates AF because the denominator collapses to
+only the non-reference samples, not the full cohort.
+
+For narrow genotype-derived AF, compute the cohort size from samples
+ALONE, bring it in via CROSS JOIN, and include a restrictive chrom/pos
+filter:
 
     WITH cohort_size AS (
         SELECT 2 * count(DISTINCT (ingest_id, sample_id)) AS an
@@ -54,6 +70,8 @@ ALONE, then bring it in via CROSS JOIN:
         ON s.ingest_id = g.ingest_id AND s.sample_id = g.sample_id
     CROSS JOIN cohort_size cs
     WHERE s.cohort = '1KG'
+      AND g.chrom = 'chr21'
+      AND g.pos BETWEEN 18000000 AND 20000000
     GROUP BY g.chrom, g.pos, g.ref, g.alt, cs.an
     ORDER BY af DESC
     LIMIT 20;
