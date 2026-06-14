@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { base } from '$app/paths';
 	import { query, registerCohort, type LoadProgress } from '$lib/duckdb';
+	import { readyNotice } from '$lib/load-status';
 	import {
 		complete,
 		getProvider,
@@ -68,6 +69,7 @@
 	let keyDraft = $state('');
 	let modelDraft = $state('');
 	let hasKey = $state(false);
+	let readyMessage = $derived(readyNotice({ dbReady, dbError }));
 
 	onMount(async () => {
 		provider = getProvider();
@@ -312,6 +314,16 @@
 					<div class="h-full w-1/3 animate-pulse rounded bg-[var(--color-primary)]"></div>
 				{/if}
 			</div>
+		</div>
+	{/if}
+
+	{#if readyMessage}
+		<div
+			role="status"
+			aria-live="polite"
+			class="mb-6 rounded border border-green-200 bg-green-50 p-4 text-sm text-green-800"
+		>
+			<strong>Cohort ready.</strong> {readyMessage}
 		</div>
 	{/if}
 
