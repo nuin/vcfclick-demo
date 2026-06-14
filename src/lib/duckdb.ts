@@ -105,23 +105,81 @@ export async function registerCohort(
 	}
 }
 
-/** Run one SQL statement and return rows + column names. */
-export async function query(
-	sql: string
-): Promise<{ columns: string[]; rows: unknown[][]; ms: number }> {
+/**
+ * Hard cap on rows pulled out of a result. The cohort has 36.8M
+ * genotype rows; a model coaxed into `SELECT * FROM genotypes` with no
+ * LIMIT would, under an eager `conn.query()`, materialize the whole
+ * thing into WASM memory and then the DOM — crashing the tab. Streaming
+ * with an early stop means DuckDB only range-reads enough parquet
+ * row-groups to fill this cap.
+ */
+export const MAX_RESULT_ROWS = 1000;
+
+export interface QueryResult {
+	columns: string[];
+	rows: unknown[][];
+	ms: number;
+	/** True if the result was cut off at MAX_RESULT_ROWS. */
+	truncated: boolean;
+}
+
+/**
+ * Run a single read-only SQL statement and return up to
+ * MAX_RESULT_ROWS rows. Streaming (`conn.send`) rather than eager
+ * (`conn.query`) so an unbounded scan stops pulling once the cap is
+ * hit instead of materializing the entire cohort.
+ */
+export async function query(sql: string): Promise<QueryResult> {
+	const trimmed = sql.trim().replace(/;\s*$/, '');
+
+	// Read-only guard: only SELECT / WITH may run. The parquet views are
+	// the demo's whole world, but a model could still be talked into
+	// DROP VIEW / CREATE / ATTACH and break the page for the session.
+	if (!/^(select|with)\b/i.test(trimmed)) {
+		throw new Error('Only SELECT queries are allowed in this demo.');
+	}
+	// Single statement only — a stray `;` mid-string would let a second
+	// statement slip past the read-only check above.
+	if (trimmed.includes(';')) {
+		throw new Error('Only a single SQL statement is allowed.');
+	}
+
 	const db = await getDuckDB();
 	const conn = await db.connect();
 	try {
 		const started = performance.now();
-		const result = await conn.query(sql);
+		const reader = await conn.send(trimmed);
+
+		let columns: string[] = [];
+		const rows: unknown[][] = [];
+		let truncated = false;
+
+		for await (const batch of reader) {
+			if (columns.length === 0) {
+				columns = batch.schema.fields.map((f) => f.name);
+			}
+			for (const row of batch.toArray()) {
+				rows.push(columns.map((c) => (row as Record<string, unknown>)[c]));
+				if (rows.length >= MAX_RESULT_ROWS) {
+					truncated = true;
+					break;
+				}
+			}
+			if (truncated) break;
+		}
+
+		// Stop DuckDB producing the rest of the result once we've capped.
+		if (truncated) {
+			try {
+				await conn.cancelSent();
+			} catch {
+				// Best-effort; the connection close in `finally` is the
+				// real cleanup.
+			}
+		}
+
 		const ms = performance.now() - started;
-		const columns = result.schema.fields.map((f) => f.name);
-		const rows = result
-			.toArray()
-			.map((r: unknown) =>
-				columns.map((c) => (r as Record<string, unknown>)[c])
-			);
-		return { columns, rows, ms };
+		return { columns, rows, ms, truncated };
 	} finally {
 		await conn.close();
 	}

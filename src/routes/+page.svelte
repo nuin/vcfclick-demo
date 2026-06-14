@@ -50,6 +50,7 @@
 	let resultColumns = $state<string[]>([]);
 	let resultRows = $state<unknown[][]>([]);
 	let queryMs = $state(0);
+	let resultTruncated = $state(false);
 	let errorMsg = $state<string | null>(null);
 
 	// Settings drawer state. Each provider keeps its own key + model in
@@ -114,6 +115,7 @@
 		explanation = null;
 		resultColumns = [];
 		resultRows = [];
+		resultTruncated = false;
 		try {
 			const completion = await complete(question);
 			sql = completion.sql;
@@ -124,6 +126,7 @@
 			resultColumns = r.columns;
 			resultRows = r.rows;
 			queryMs = r.ms;
+			resultTruncated = r.truncated;
 		} catch (e) {
 			errorMsg = (e as Error).message;
 		} finally {
@@ -351,9 +354,19 @@
 			<h2 class="mb-2 flex items-baseline justify-between text-sm font-medium text-gray-700">
 				<span>Results</span>
 				<span class="font-mono text-xs text-gray-400"
-					>{resultRows.length} rows · {queryMs.toFixed(0)} ms</span
+					>{resultTruncated ? `first ${resultRows.length}` : resultRows.length} rows ·
+					{queryMs.toFixed(0)} ms</span
 				>
 			</h2>
+			{#if resultTruncated}
+				<p
+					class="mb-2 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+				>
+					Showing the first {resultRows.length} rows. The demo caps results to keep the
+					browser responsive — add a tighter <code>WHERE</code> or
+					<code>LIMIT</code> to your question to narrow it down.
+				</p>
+			{/if}
 			{#if resultRows.length === 0}
 				<p class="rounded border border-stone-200 bg-white p-4 text-sm text-gray-500">
 					Query returned no rows.

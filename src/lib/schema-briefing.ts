@@ -63,7 +63,10 @@ DuckDB-specific notes:
   * Use cardinality(info_extra) not length(info_extra) for MAP size.
   * Use map_keys(info_extra) not mapKeys(info_extra).
 
-Always include a LIMIT clause unless the user explicitly asks for
-all rows — this runs in the browser and unbounded results freeze
-the page. Default LIMIT 50.
+ALWAYS include a LIMIT clause. This runs DuckDB in the browser and
+an unbounded result set (the cohort has tens of millions of genotype
+rows) would freeze the tab. Default LIMIT 50, and cap at 1000 even
+when the user asks for "all rows", "no limit", or "everything" —
+in that case return LIMIT 1000 and mention in the explanation that
+the demo caps results. Never emit a query without a LIMIT.
 `.trim();
