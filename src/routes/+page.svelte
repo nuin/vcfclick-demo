@@ -38,6 +38,13 @@
 		'Show the top 10 variants by allele frequency between chr21:18M and 20M.'
 	];
 
+	const STATS = [
+		['2,504', 'samples'],
+		['~243k', 'variants'],
+		['DuckDB-Wasm', 'browser demo'],
+		['chDB', 'ClickHouse backend']
+	];
+
 	let dbReady = $state(false);
 	let dbError = $state<string | null>(null);
 	let loadLabel = $state('Starting…');
@@ -144,14 +151,19 @@
 </svelte:head>
 
 <main class="mx-auto max-w-4xl px-4 py-12">
-	<header class="mb-10 flex items-start justify-between gap-4">
-		<div>
-			<h1 class="mb-2 text-3xl font-bold text-gray-900">vcfclick demo</h1>
+	<header class="mb-10 flex flex-col items-start justify-between gap-4 sm:flex-row">
+		<div class="max-w-2xl">
+			<p class="mb-2 text-xs font-bold tracking-wide text-[var(--color-primary)] uppercase">
+				vcfclick hosted preview
+			</p>
+			<h1 class="mb-2 text-3xl font-bold text-gray-900">
+				Explore a VCF cohort without downloading the VCF
+			</h1>
 			<p class="max-w-2xl text-gray-600">
-				Ask a population-genetics question in English. A language model writes the SQL;
-				DuckDB-Wasm runs it in your browser against the 1000 Genomes phase 3 cohort
-				(2,504 samples, chr21:14M-22M). You see the SQL it wrote, so you can audit
-				the math.
+				Ask a genomics question, inspect the generated SQL, and query a 1000
+				Genomes phase 3 cohort directly in your browser. This public demo uses
+				DuckDB-Wasm over Parquet; vcfclick also supports embedded chDB for
+				ClickHouse-backed cohort databases with no ClickHouse server to operate.
 			</p>
 			<p class="mt-3 text-sm text-gray-500">
 				Source:
@@ -169,11 +181,19 @@
 					rel="noopener noreferrer">PyPI</a
 				>
 			</p>
+			<div class="mt-5 flex flex-wrap gap-2">
+				{#each STATS as [value, label]}
+					<div class="rounded border border-stone-200 bg-white px-3 py-2 shadow-sm">
+						<div class="font-mono text-sm font-bold text-gray-900">{value}</div>
+						<div class="text-xs text-gray-500">{label}</div>
+					</div>
+				{/each}
+			</div>
 		</div>
 		<button
 			type="button"
 			onclick={() => (settingsOpen = !settingsOpen)}
-			class="rounded border border-stone-300 bg-white px-3 py-1.5 text-xs text-gray-600 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
+			class="shrink-0 whitespace-nowrap rounded border border-stone-300 bg-white px-3 py-1.5 text-xs text-gray-600 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
 			title="API key settings"
 		>
 			{hasKey ? '⚙ settings' : '⚙ set API key'}
@@ -401,13 +421,57 @@
 		</section>
 	{/if}
 
+	<section class="mt-8 rounded border border-stone-300 bg-white p-5 shadow-sm">
+		<div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+			<div>
+				<p class="mb-1 text-xs font-bold tracking-wide text-[var(--color-primary)] uppercase">
+					Hosted workspaces
+				</p>
+				<h2 class="text-sm font-bold text-gray-900">Want this for your cohort?</h2>
+			</div>
+			<a
+				href="https://github.com/nuin/vcfclick/issues/new?title=Hosted%20cohort%20workspace"
+				target="_blank"
+				rel="noopener noreferrer"
+				class="inline-flex rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white shadow-sm hover:bg-gray-800"
+				>Request hosted cohort workspace</a
+			>
+		</div>
+		<p class="mb-4 max-w-2xl text-sm leading-relaxed text-gray-600">
+			Hosted vcfclick workspaces turn VCF-derived cohorts into private, shareable
+			query surfaces. Use DuckDB/Parquet for lightweight browser sharing and
+			chDB-backed workspaces when cohort-scale genotype queries need
+			ClickHouse-style performance.
+		</p>
+		<div class="grid gap-3 sm:grid-cols-2">
+			<div class="rounded border border-stone-200 bg-stone-50 p-4">
+				<h3 class="mb-2 text-sm font-bold text-gray-900">For labs</h3>
+				<ul class="space-y-1 text-sm text-gray-600">
+					<li>Private cohort workspace for PI and lab members</li>
+					<li>Saved SQL, visible generated queries, CSV/Parquet export</li>
+					<li>Local-first CLI path when data cannot leave the workstation</li>
+				</ul>
+			</div>
+			<div class="rounded border border-stone-200 bg-stone-50 p-4">
+				<h3 class="mb-2 text-sm font-bold text-gray-900">For cores</h3>
+				<ul class="space-y-1 text-sm text-gray-600">
+					<li>Project workspaces instead of static TSV handoffs</li>
+					<li>Shareable collaborator access with auditable SQL</li>
+					<li>Bundle import/export for repeatable delivery workflows</li>
+				</ul>
+			</div>
+		</div>
+	</section>
+
 	<footer class="mt-16 border-t border-stone-200 pt-6 text-sm text-gray-500">
 		<p>
 			Runs DuckDB-Wasm in your browser. You bring your own API key for either Google
 			Gemini (free tier) or Anthropic Claude — it stays in your browser's localStorage
 			and is only ever sent to that provider's own API endpoint. Parquet files are
-			fetched by HTTP range read, so you only download the columns and row groups each
-			query touches.
+			fetched by HTTP range read, so you only download the columns and row groups
+			each query touches. The full vcfclick CLI can also use embedded chDB, giving
+			labs and cores a ClickHouse-compatible backend without operating a ClickHouse
+			server.
 		</p>
 	</footer>
 </main>

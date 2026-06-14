@@ -1,10 +1,15 @@
 # vcfclick-demo
 
 Pure-static page hosted on GitHub Pages. DuckDB-Wasm runs the cohort
-SQL in the visitor's browser; visitors bring their own Anthropic API
-key (kept in their browser's localStorage, never sent anywhere except
-`api.anthropic.com`). No server, no secrets to manage, no rate-limit
-exposure on my account.
+SQL in the visitor's browser; visitors bring their own Google Gemini
+or Anthropic API key (kept in their browser's localStorage, never sent
+anywhere except the selected model provider). No server, no secrets to
+manage, no rate-limit exposure on my account.
+
+The page is also the hosted-workspace preview for vcfclick: the public
+demo uses DuckDB-Wasm over Parquet, while the broader vcfclick product
+can use embedded chDB for ClickHouse-backed cohort databases without
+operating a ClickHouse server.
 
 ## What's here
 
@@ -13,11 +18,11 @@ src/
   app.html, app.css                  global page shell + Tailwind v4
   routes/+layout.svelte              shell
   routes/+page.svelte                the demo UI (ask, SQL panel,
-                                     results, settings drawer)
+                                     results, settings drawer,
+                                     hosted-workspace CTA)
   lib/duckdb.ts                      DuckDB-Wasm init + query helper
-  lib/llm.ts                         browser-direct Anthropic call
-                                     with anthropic-dangerous-
-                                     direct-browser-access: true
+  lib/llm.ts                         browser-direct Gemini and
+                                     Anthropic calls
   lib/schema-briefing.ts             schema briefing handed to the
                                      model — sparse-aware AF pattern
 static/demo-data/                    MVP cohort: tiny test fixture
@@ -25,12 +30,16 @@ static/demo-data/                    MVP cohort: tiny test fixture
 .github/workflows/deploy.yml         build + publish on push to main
 ```
 
-## MVP cohort
+## Demo cohort
 
-`static/demo-data/` is the vcfclick test fixture dumped to Parquet.
-5 variants × 3 samples — proves the wiring; not a useful demo
-dataset. The "next steps" section below covers swapping in real
-1000G chr21.
+The deployed GitHub Pages build is intended to point at a 1000
+Genomes phase 3 chr21 slice (2,504 samples, chr21:14M-22M,
+~243,000 variants). Local development defaults to whatever Parquet
+files are present under `static/demo-data/`.
+
+Use `VITE_DEMO_DATA_BASE` at build time to point the app at a public
+Parquet location such as GitHub Releases, Cloudflare R2, public S3, or
+another CORS-enabled CDN.
 
 ## Local dev
 
@@ -40,7 +49,8 @@ bun run dev
 ```
 
 Open the page, click "⚙ set API key", paste your Anthropic key
-(`sk-ant-…`), then ask a question. The key stays in your browser.
+(`sk-ant-…`) or Google AI Studio key (`AIza…`), then ask a question.
+The key stays in your browser.
 
 ## Deploy to GitHub Pages
 
@@ -59,10 +69,9 @@ If you wire a custom domain (e.g. `demo.vcfclick.io`), set
 `BASE_PATH: ''` in `.github/workflows/deploy.yml` and add a
 `static/CNAME` file containing the domain.
 
-## Loading a real cohort
+## Loading a cohort
 
-The MVP fixture is too small to demonstrate anything. To run against
-real 1000 Genomes chr21:
+To run against 1000 Genomes chr21:
 
 ```bash
 # In the main vcfclick repo
@@ -100,10 +109,9 @@ The page makes exactly two kinds of network calls:
 
 1. **Cohort Parquet files** fetched from `VITE_DEMO_DATA_BASE` (HTTP
    range reads, no credentials).
-2. **Anthropic Messages API** at `https://api.anthropic.com/v1/messages`,
-   using the visitor's own key supplied via the settings drawer. The
-   key is stored in localStorage on their device and never sent
-   elsewhere.
+2. **Google Gemini or Anthropic APIs**, using the visitor's own key
+   supplied via the settings drawer. The key is stored in localStorage
+   on their device and never sent elsewhere.
 
 There is no analytics, no telemetry, no server-side logging — there
 is no server. The page is 100% static files on GitHub Pages.
