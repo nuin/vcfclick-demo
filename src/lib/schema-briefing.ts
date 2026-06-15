@@ -10,9 +10,16 @@
 
 export const SCHEMA_BRIEFING = `
 You are helping someone query a 1000 Genomes Project phase 3 cohort
-using DuckDB. The cohort is restricted to chr21:14,000,000-22,000,000
-(8 Mb on the q-arm of chr21) so it loads quickly in the browser.
-2,504 samples, ~243,000 variants.
+using DuckDB. The cohort is restricted to chromosome 21,
+14,000,000-22,000,000 (8 Mb on the q-arm) so it loads quickly in the
+browser. 2,504 samples, ~243,000 variants.
+
+CHROMOSOME NAMING — CRITICAL: this 1000 Genomes phase 3 data stores
+the chromosome WITHOUT the "chr" prefix. The chrom column value is
+'21', NOT 'chr21'. Always filter with chrom = '21'. Using 'chr21'
+matches zero rows. If the user says "chr21" in their question, still
+write chrom = '21' in the SQL.
+
 The database has three tables:
 
 VARIANTS  — one row per (ingest_id, chrom, pos, ref, alt). Carries
@@ -70,7 +77,7 @@ filter:
         ON s.ingest_id = g.ingest_id AND s.sample_id = g.sample_id
     CROSS JOIN cohort_size cs
     WHERE s.cohort = '1KG'
-      AND g.chrom = 'chr21'
+      AND g.chrom = '21'
       AND g.pos BETWEEN 18000000 AND 20000000
     GROUP BY g.chrom, g.pos, g.ref, g.alt, cs.an
     ORDER BY af DESC
